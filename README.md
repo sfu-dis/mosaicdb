@@ -1,9 +1,11 @@
-## MosaicDB: Latency-Optimized Main-Memory Database Engine
+## The Art of Latency Hiding in Modern Database Engines (A.K.A. MosaicDB, VLDB '24)
+### [Nov 3, 2023] Code and README refactoring in progress, stay tuned.
 
+--------
 #### Software dependencies
 * cmake
 * python2
-* [clang; libcxx; libcxxabi](https://github.com/llvm/llvm-project)
+* gcc-10 or above
 * libnuma
 * libibverbs
 * libgflags
@@ -12,10 +14,10 @@
 
 Ubuntu
 ```
-apt-get install -y cmake gcc-10 g++-10 clang-8 libc++-8-dev libc++abi-8-dev
-apt-get install -y libnuma-dev libibverbs-dev libgflags-dev libgoogle-glog-dev liburing-dev
+apt-get install -y cmake gcc-10 g++-10 libc++-8-dev libc++abi-8-dev libnuma-dev libibverbs-dev libgflags-dev libgoogle-glog-dev liburing-dev
 ```
 
+--------
 #### Environment configurations
 Make sure you have enough huge pages.
 
@@ -33,30 +35,27 @@ This limits the maximum for --node-memory-gb to 10 for a 4-socket machine (see b
 *Re-login to apply.*
 
 --------
-#### Build it
+#### Build it (WIP)
 We do not allow building in the source directory. Suppose we build in a separate directory:
 
 ```
 $ mkdir build
 $ cd build
 $ cmake ../ -DCMAKE_BUILD_TYPE=[Debug/Release/RelWithDebInfo]
-$ make -jN
+$ make
 ```
 
-Currently the code can compile under GCC-10/Clang-8 or above. E.g., to use GCC-10, issue the following `cmake` command instead:
-```
-$ CC=gcc-10 CXX=g++-10 cmake ../ -DCMAKE_BUILD_TYPE=[Debug/Release/RelWithDebInfo]
-```
+The executables will be built under `build/benchmarks`:
 
-After `make` there will be 4 executables under `build`:
+`ycsb/ycsb_SI_sequential_coro`: ERMIA;
 
-`benchmarks/ycsb/ycsb_SI_sequential_coro` that runs CoroBase (sequential mode), which is equivalent of ERMIA;
+`ycsb/ycsb_SI_simple_coro`: CoroBase;
 
-`benchmarks/ycsb/ycsb_SI_simple_coro` that runs CoroBase (optimized 2-level coroutine-to-transaction design) with snapshot isolation (not serializable);
+`ycsb/ycsb_SI_hybrid_coro`: MosaicDB (selective coroutine);
 
-`benchmarks/ycsb/ycsb_SI_hybrid_coro` that runs CoroBase (optimized 2-level coroutine-to-transaction design with loading cold tuples nested) with snapshot isolation (not serializable);
+`ycsb/ycsb_SI_nested_coro`: MosaicDB (nested coroutine);
 
-`benchmarks/ycsb/ycsb_SI_nested_coro` that runs CoroBase (fully-nested coroutine-to-transaction design) with snapshot isolation (not serializable);
+`ycsb/ycsb_SI_flat_coro`: MosaicDB (flat coroutine);
 
-#### Run example
-
+--------
+#### Run example (WIP)
