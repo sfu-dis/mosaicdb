@@ -817,6 +817,10 @@ start_over:
   ASSERT(ptr.asi_type() == 0 || ptr.asi_type() == fat_ptr::ASI_LOG);
 
   if (ptr.asi_type() == fat_ptr::ASI_LOG) {
+    if (visitor_xc->xct->abort_if_cold()) {
+      visitor_xc->xct->set_forced_abort(true);
+      RETURN nullptr;
+    }
     dbtuple *tuple = AWAIT ermia::Object::LoadFromStorage(visitor_xc->xct, ptr, nullptr);
     RETURN tuple;
   }

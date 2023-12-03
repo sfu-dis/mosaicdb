@@ -530,15 +530,7 @@ void bench_runner::start_measurement() {
   }
   if (ermia::config::test_spinlock) {
     std::cout << "---------------------------------------\n";
-#ifdef LOCKONLY
-    std::cout << "this is a lock-only test" << std::endl;
-#endif
     std::cout << "critical section size: " << ermia::config::test_spinlock_cs << std::endl;
-#ifdef TATAS_STATS
-    std::cout << "lock attempt: " << ermia::spinlock.get_attempt() << std::endl;
-    std::cout << "lock success: " << ermia::spinlock.get_success() << std::endl;
-    std::cout << "lock success rate: " << ceil(100 * ermia::spinlock.get_success() / ermia::spinlock.get_attempt()) << "%" <<std::endl;
-#endif
   }
   std::cout.flush();
 }

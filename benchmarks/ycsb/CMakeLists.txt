@@ -23,3 +23,8 @@ add_executable(ycsb_SI_hybrid_coro ${CMAKE_CURRENT_SOURCE_DIR}/ycsb-hybrid-coro.
 set_target_properties(ycsb_SI_hybrid_coro PROPERTIES COMPILE_FLAGS "")
 #set_target_properties(corobase_SI PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DGROUP_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
 target_link_libraries(ycsb_SI_hybrid_coro corobase_hybrid_coro_si thread_pool)
+
+add_executable(ycsb_SI_flat_coro ${CMAKE_CURRENT_SOURCE_DIR}/ycsb-flat-coro.cc)
+set_target_properties(ycsb_SI_flat_coro PROPERTIES COMPILE_FLAGS "")
+#set_target_properties(corobase_SI PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DGROUP_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
+target_link_libraries(ycsb_SI_flat_coro corobase_flat_coro_si thread_pool)

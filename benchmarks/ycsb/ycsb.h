@@ -23,7 +23,8 @@ enum class ReadTransactionType {
   NestedCoroMultiGet,
   SimpleCoro,
   NestedCoro,
-  HybridCoro
+  HybridCoro,
+  FlatCoro
 };
 
 // TODO(tzwang); support other value lengths and columns specified by user
@@ -33,7 +34,7 @@ DO_STRUCT(ycsb_kv, YCSB_KEY_FIELDS, YCSB_VALUE_FIELDS);
 
 inline void BuildKey(uint64_t key, ermia::varstr &k) {
   ASSERT (sizeof(ycsb_kv::key) % sizeof(uint64_t) == 0);
-  static const char *prefix = "corobase";
+  static const char *prefix = "mosaicdb";
   ycsb_kv::key extended_key;
   for (uint offset = 0; offset < sizeof(ycsb_kv::key); offset = offset + sizeof(uint64_t)) {
     if (offset + sizeof(uint64_t) < sizeof(ycsb_kv::key))

@@ -21,8 +21,6 @@ constexpr int kExpBackoffMultiplier = 2;
 namespace ermia {
   void microdelay(long microsec);
 
-  PROMISE(void) nanodelay(long nanosec);
-
   class TATAS {
     std::atomic<uint64_t> lock_;
     uint64_t attempt;
@@ -34,7 +32,6 @@ namespace ermia {
       success = 0;
     }
     void lock();
-    PROMISE(void) coro_lock();
     void unlock();
     uint64_t get_attempt();
     uint64_t get_success();

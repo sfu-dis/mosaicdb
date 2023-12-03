@@ -195,16 +195,6 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 
   // Read hot data only
   rc_t txn_hot_read() {
-#ifdef LOCKONLY
-    ermia::myspinlock.lock();
-    volatile int x = 0;
-    for (volatile int i = 0; i < ermia::config::test_spinlock_cs; ++i) {
-      x += i;
-    }
-    ermia::myspinlock.unlock();
-    return {RC_TRUE};
-#endif
-
     ermia::transaction *txn = nullptr;
 
     if (ermia::config::index_probe_only) {

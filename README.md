@@ -1,61 +1,110 @@
-## The Art of Latency Hiding in Modern Database Engines (A.K.A. MosaicDB, VLDB '24)
-### [Nov 3, 2023] Code and README refactoring in progress, stay tuned.
+## The Art of Latency Hiding in Modern Database Engines (VLDB '24)
 
---------
-#### Software dependencies
+### Environment configurations
+Step 1: Software dependencies
 * cmake
 * python2
-* gcc-10 or above
+* gcc-10
 * libnuma
 * libibverbs
 * libgflags
 * libgoogle-glog
 * liburing
 
-Ubuntu
+Example for Ubuntu
 ```
-apt-get install -y cmake gcc-10 g++-10 libc++-8-dev libc++abi-8-dev libnuma-dev libibverbs-dev libgflags-dev libgoogle-glog-dev liburing-dev
+$ sudo apt-get install cmake gcc-10 g++-10 libc++-dev libc++abi-dev libnuma-dev libibverbs-dev libgflags-dev libgoogle-glog-dev liburing-dev
 ```
 
---------
-#### Environment configurations
-Make sure you have enough huge pages.
+Step 2: Make sure you have enough huge pages
 
-* CoroBase uses `mmap` with `MAP_HUGETLB` (available after Linux 2.6.32) to allocate huge pages. Almost all memory allocations come from the space carved out here. Assuming the default huge page size is 2MB, the command below will allocate 2x MB of memory:
+MosaicDB uses `mmap` with `MAP_HUGETLB` (available after Linux 2.6.32) to allocate huge pages. Almost all memory allocations come from the space carved out here. Assuming the default huge page size is 2MB, the command below will allocate 2x MB of memory:
 ```
-sudo sh -c 'echo [x pages] > /proc/sys/vm/nr_hugepages'
+$ sudo sh -c 'echo [x pages] > /proc/sys/vm/nr_hugepages'
 ```
-This limits the maximum for --node-memory-gb to 10 for a 4-socket machine (see below).
 
-* `mlock` limits. Add the following to `/etc/security/limits.conf` (replace "[user]" with your login):
+Step 3: Set mlock limits. Add the following to `/etc/security/limits.conf` (replace "[user]" with your username):
 ```
 [user] soft memlock unlimited
 [user] hard memlock unlimited
 ```
-*Re-login to apply.*
+Step 4: Re-login to apply the changes
 
 --------
-#### Build it (WIP)
-We do not allow building in the source directory. Suppose we build in a separate directory:
+### Compile
+We do not allow building in the source directory:
 
 ```
 $ mkdir build
 $ cd build
-$ cmake ../ -DCMAKE_BUILD_TYPE=[Debug/Release/RelWithDebInfo]
+$ cmake ../ -DCMAKE_BUILD_TYPE=[Debug|Release|RelWithDebInfo]
 $ make
 ```
-
-The executables will be built under `build/benchmarks`:
-
-`ycsb/ycsb_SI_sequential_coro`: ERMIA;
-
-`ycsb/ycsb_SI_simple_coro`: CoroBase;
-
-`ycsb/ycsb_SI_hybrid_coro`: MosaicDB (selective coroutine);
-
-`ycsb/ycsb_SI_nested_coro`: MosaicDB (nested coroutine);
-
-`ycsb/ycsb_SI_flat_coro`: MosaicDB (flat coroutine);
-
 --------
-#### Run example (WIP)
+### Run
+Required options:
+* -log_data_dir=[path] (path to the directory where the log files will be stored)
+* -node_memory_gb=[#] (the amount of memory in GB that the node has)
+* -seconds=[#]
+* -threads=[#]
+
+MosaicDB-specific options:
+* -ycsb_read_tx_type=[hybrid-coro|nested-coro|flat-coro] (choose according to the executable)
+* -coro_scheduler=2
+* -coro_batch_size=[#] (8, by default)
+* -coro_cold_queue_size=[#] (16, by default)
+* -coro_check_cold_tx_interval=[#] (8, by default)
+
+Pipeline-specific options:
+* -ycsb_read_tx_type=[hybrid-coro|nested-coro|flat-coro] (choose according to the executable)
+* -coro_scheduler=1
+* -coro_batch_size=[#] (16, by default)
+* -coro_cold_tx_threshold=[#] (8, by default)
+
+Batch-specific options:
+* -ycsb_read_tx_type=[hybrid-coro|nested-coro|flat-coro] (choose according to the executable)
+* -coro_scheduler=0
+* -coro_batch_size=[#] (16, by default)
+* -coro_cold_tx_threshold=[#] (8, by default)
+
+Sequential-specific options:
+* -ycsb_read_tx_type=sequential
+
+For more options, please refer to `sm-config.h`.
+
+Example for MosaicDB:
+```
+$ ./ycsb_SI_hybrid_coro \
+-log_data_dir=/mnt/nvme0n1/mosaicdb-log \
+-node_memory_gb=50 \
+-ycsb_workload=C -ycsb_read_tx_type=hybrid-coro \
+-ycsb_hot_table_size=300000000 \
+-ycsb_cold_table_size=3000000 \
+-ycsb_ops_per_tx=10 \
+-ycsb_cold_ops_per_tx=2 \
+-ycsb_ops_per_hot_tx=10 \
+-ycsb_hot_tx_percent=0.9 \
+-coro_scheduler=2 \
+-coro_batch_size=8 \
+-coro_cold_queue_size=16 \
+-coro_check_cold_tx_interval=8 \
+-seconds=10 \
+-threads=10 
+```
+
+Example for sequential:
+```
+$ ./ycsb_SI_sequential \
+-log_data_dir=/mnt/nvme0n1/mosaicdb-log \
+-node_memory_gb=50 \
+-ycsb_workload=C \
+-ycsb_read_tx_type=sequential \
+-ycsb_hot_table_size=300000000 \
+-ycsb_cold_table_size=3000000 \
+-ycsb_ops_per_tx=10 \
+-ycsb_cold_ops_per_tx=2 \
+-ycsb_ops_per_hot_tx=10 \
+-ycsb_hot_tx_percent=0.9 \
+-seconds=10 \
+-threads=10
+```

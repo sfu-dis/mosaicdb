@@ -8,7 +8,7 @@
 namespace ermia {
 namespace config {
 
-uint32_t arena_size_mb = 4;
+uint32_t arena_size_mb = 8;
 bool threadpool = true;
 bool tls_alloc = true;
 bool verbose = true;
@@ -41,7 +41,7 @@ std::string tmpfs_dir("/dev/shm");
 int enable_safesnap = 0;
 int enable_ssi_read_only_opt = 0;
 uint64_t ssn_read_opt_threshold = SSN_READ_OPT_DISABLED;
-uint64_t log_buffer_mb = 64;
+uint64_t log_buffer_mb = 8;
 uint64_t log_segment_mb = 16384;
 std::string log_dir("");
 bool null_log_device = false;
@@ -73,7 +73,7 @@ bool index_probe_only = false;
 bool amac_version_chain = false;
 bool numa_spread = false;
 bool kStateRunning = false;
-bool iouring_read_log = false;
+bool iouring_read_log = true;
 bool log_direct_io = true;
 std::string read_txn_type = "sequential";
 uint64_t fetch_cold_tx_interval = 0;

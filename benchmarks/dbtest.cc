@@ -15,7 +15,7 @@
 
 DEFINE_bool(threadpool, true,
             "Whether to use ERMIA thread pool (no oversubscription)");
-DEFINE_uint64(arena_size_mb, 4,
+DEFINE_uint64(arena_size_mb, 8,
               "Size of transaction arena (private workspace) in MB");
 DEFINE_bool(tls_alloc, true,
             "Whether to use the TLS allocator defined in sm-alloc.h");
@@ -41,24 +41,21 @@ DEFINE_bool(coro_batch_schedule, false,
 DEFINE_uint32(coro_scheduler, 0,
             "Different scheduling modes in the hybrid-coro/nested-coro YCSB."
             "0: batch scheduler"
-            "1: vanilla single queue pipeline"
-            "2: single queue pipeline with admission control"
-            "3: dual-queue pipeline"
-            "4: dual-queue pipeline with admission control");
+            "1: pipeline scheduler"
+            "2: pipeline with admission control"
+            "3: dual pipeline with admission control");
 DEFINE_uint32(coro_io_scheduler, 0,
             "Different I/O scheduling modes in the hybrid-coro YCSB."
             "0: batch scheduler"
-            "1: vanilla single queue pipeline"
-            "2: single queue pipeline with admission control"
-            "3: dual-queue pipeline"
-            "4: dual-queue pipeline with admission control");
+            "1: pipeline scheduler"
+            "2: pipeline with admission control"
+            "3: dual pipeline with admission control");
 DEFINE_uint32(coro_remote_scheduler, 0,
             "Different remote scheduling modes in the hybrid-coro YCSB."
             "0: batch scheduler"
-            "1: vanilla single queue pipeline"
-            "2: single queue pipeline with admission control"
-            "3: dual-queue pipeline"
-            "4: dual-queue pipeline with admission control");
+            "1: pipeline scheduler"
+            "2: pipeline with admission control"
+            "3: dual pipeline with admission control");
 DEFINE_uint32(coro_cold_queue_size, 0, "Dual-queue pipeline cold queue size");
 DEFINE_uint32(coro_cold_tx_threshold, 0, "Max number of cold transactions in the scheduler");
 DEFINE_string(coro_cold_tx_name, "", "Cold transaction name used for admission control in schedulers");
@@ -77,9 +74,9 @@ DEFINE_bool(numa_spread, false,
 DEFINE_string(tmpfs_dir, "/dev/shm",
               "Path to a tmpfs location. Used by log buffer.");
 DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");
-DEFINE_uint64(log_buffer_mb, 16, "Log buffer size in MB.");
+DEFINE_uint64(log_buffer_mb, 8, "Log buffer size in MB.");
 DEFINE_uint64(log_segment_mb, 16384, "Log segment size in MB.");
-DEFINE_bool(log_direct_io, false, "Whether to use O_DIRECT for dlog.");
+DEFINE_bool(log_direct_io, true, "Whether to use O_DIRECT for dlog.");
 DEFINE_bool(phantom_prot, false, "Whether to enable phantom protection.");
 DEFINE_bool(print_cpu_util, false, "Whether to print CPU utilization.");
 DEFINE_bool(enable_perf, false,
@@ -135,7 +132,7 @@ DEFINE_uint64(pcommit_size_kb, PAGE_SIZE,
 DEFINE_bool(pcommit_thread, false,
             "Whether to use a dedicated pipelined committer thread.");
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
-DEFINE_bool(iouring_read_log, false,
+DEFINE_bool(iouring_read_log, true,
             "Whether to use iouring to load versions from logs.");
 DEFINE_uint64(fetch_cold_tx_interval, 0, "The interval of fetching cold transactions measured by # of transactions");
 DEFINE_bool(test_spinlock, false, "Acquire the spinlock before a transaction starts");
@@ -392,10 +389,7 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
     std::cerr << "  interval of checking cold transactions measured by # of committed hot transactions: " << ermia::config::coro_check_cold_tx_interval << std::endl;
   }
 
-  system("rm -rf /dev/shm/$(whoami)/ermia-log/*");
-  system("rm -rf /dev/shm/$(whoami)/corobase-log/*");
-  system("rm -rf /mnt/nvme0n1p1/$(whoami)/corobase-log/*");
-  system("rm -rf /mnt/nvme1n1/$(whoami)/corobase-log/*");
+  system("rm -rf " + FLAGS_log_data_dir + "/*");
   ermia::MM::prepare_node_memory();
 
   // Must have everything in config ready by this point
@@ -406,9 +400,7 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
   // it could be on any node. But not all nodes will be used by benchmark
   // (i.e., config::numa_nodes) and so not all nodes will have memory pool. So
   // here run on the first NUMA node to ensure we got a place to allocate memory
-#ifndef LOCKONLY
   numa_run_on_node(0);
-#endif
   test_fn(db);
   delete db;
 }

@@ -9,9 +9,9 @@
 extern YcsbWorkload ycsb_workload;
 extern ReadTransactionType g_read_txn_type;
 
-class ycsb_cs_hybrid_worker : public ycsb_base_worker {
+class ycsb_cs_flat_worker : public ycsb_base_worker {
  public:
-  ycsb_cs_hybrid_worker(
+  ycsb_cs_flat_worker(
       unsigned int worker_id, unsigned long seed, ermia::Engine *db,
       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
       spin_barrier *barrier_a, spin_barrier *barrier_b)
@@ -25,26 +25,22 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
     _coro_batch_size = ermia::config::coro_batch_size;
 
     auto schedule_mode = ermia::config::coro_scheduler;
-    LOG_IF(FATAL, ermia::config::io_threads + ermia::config::remote_threads > ermia::config::worker_threads) << "Not enough threads.";
-    if (ermia::config::io_threads || ermia::config::remote_threads) {
+    LOG_IF(FATAL, ermia::config::io_threads > ermia::config::worker_threads) << "Not enough threads.";
+    if (ermia::config::io_threads) {
       if (worker_id < ermia::config::io_threads) {
         workload = get_cold_workload();
         schedule_mode = ermia::config::coro_io_scheduler;
         _coro_batch_size = ermia::config::coro_io_batch_size;
-      } else if (worker_id < ermia::config::io_threads + ermia::config::remote_threads) {
-        workload = get_remote_workload();
-        schedule_mode = ermia::config::coro_remote_scheduler;
-        _coro_batch_size = ermia::config::coro_remote_batch_size;
       } else {
         workload = get_hot_workload();
       }
     }
     if (schedule_mode == 0) {
-      HybridBatch();
+      FlatBatch();
     } else if (schedule_mode == 1) {
-      HybridPipeline();
+      FlatPipeline();
     } else if (schedule_mode == 2) {
-      HybridMosaicDB();
+      FlatMosaicDB();
     } else {
       LOG(FATAL) << "\n-coro_scheduler=<0|1|2|3>"
                     "\n0: batch scheduler"
@@ -55,31 +51,15 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
 
   virtual workload_desc_vec get_workload() const override {
     workload_desc_vec w;
-    if (ycsb_workload.scan_percent()) {
+    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent() || ycsb_workload.scan_percent()) {
       LOG(FATAL) << "Not implemented";
     }
 
-    LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro) << "Read txn type must be hybrid-coro";
+    LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::FlatCoro) << "Read txn type must be flat-coro";
 
     if (ycsb_workload.read_percent()) {
       w.push_back(workload_desc("0-HotRead", FLAGS_ycsb_hot_tx_percent * double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnHotRead));
       w.push_back(workload_desc("1-ColdRead", (1 - FLAGS_ycsb_hot_tx_percent - FLAGS_ycsb_remote_tx_percent) * double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnRead));
-      w.push_back(workload_desc("2-RemoteRead", FLAGS_ycsb_remote_tx_percent * double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnRemoteRead));
-    }
-
-    if (ycsb_workload.rmw_percent()) {
-      LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
-      w.push_back(workload_desc("0-HotRMW", FLAGS_ycsb_hot_tx_percent * double(ycsb_workload.rmw_percent()) / 100.0, nullptr, nullptr, TxnHotRMW));
-      w.push_back(workload_desc("1-ColdRMW", (1 - FLAGS_ycsb_hot_tx_percent - FLAGS_ycsb_remote_tx_percent) * double(ycsb_workload.rmw_percent()) / 100.0, nullptr, nullptr, TxnRMW));
-    }
-
-    if (ycsb_workload.insert_percent()) {
-      w.push_back(workload_desc("0-Insert", double(ycsb_workload.insert_percent()) / 100.0, nullptr, nullptr, TxnInsert));
-    }
-
-    if (ycsb_workload.update_percent()) {
-      w.push_back(workload_desc("0-HotUpdate", FLAGS_ycsb_hot_tx_percent * double(ycsb_workload.update_percent()) / 100.0, nullptr, nullptr, TxnHotUpdate));
-      w.push_back(workload_desc("1-ColdUpdate", (1 - FLAGS_ycsb_hot_tx_percent) * double(ycsb_workload.update_percent()) / 100.0, nullptr, nullptr, TxnColdUpdate));
     }
 
     return w;
@@ -88,38 +68,12 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
   workload_desc_vec get_hot_workload() const {
     workload_desc_vec w;
 
-    LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro)
-        << "Read txn type must be hybrid-coro";
+    LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::FlatCoro)
+        << "Read txn type must be flat-coro";
 
     if (ycsb_workload.read_percent()) {
       w.push_back(workload_desc("0-HotRead", 1, nullptr, nullptr, TxnHotRead));
       w.push_back(workload_desc("1-ColdRead", 0, nullptr, nullptr, TxnRead));
-      w.push_back(workload_desc("2-RemoteRead", 0, nullptr, nullptr, TxnRemoteRead));
-    }
-
-    if (ycsb_workload.rmw_percent()) {
-      LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
-      w.push_back(workload_desc("0-HotRMW", 1, nullptr, nullptr, TxnHotRMW));
-      w.push_back(workload_desc("1-ColdRMW", 0, nullptr, nullptr, TxnRMW));
-    }
-
-    return w;
-  }
-
-  workload_desc_vec get_remote_workload() const {
-    workload_desc_vec w;
-
-    LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro)
-        << "Read txn type must be hybrid-coro";
-
-    if (ycsb_workload.read_percent()) {
-      w.push_back(workload_desc("0-HotRead", 0, nullptr, nullptr, TxnHotRead));
-      w.push_back(workload_desc("1-ColdRead", 0, nullptr, nullptr, TxnRead));
-      w.push_back(workload_desc("2-RemoteRead", 1, nullptr, nullptr, TxnRemoteRead));
-    }
-
-    if (ycsb_workload.rmw_percent()) {
-      LOG(FATAL) << "Not supported";
     }
 
     return w;
@@ -128,54 +82,23 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
   workload_desc_vec get_cold_workload() const {
     workload_desc_vec w;
 
-    LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro)
-        << "Read txn type must be hybrid-coro";
+    LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::FlatCoro)
+        << "Read txn type must be flat-coro";
 
     if (ycsb_workload.read_percent()) {
       w.push_back(workload_desc("0-HotRead", 0, nullptr, nullptr, TxnHotRead));
       w.push_back(workload_desc("1-ColdRead", 1, nullptr, nullptr, TxnRead));
-      w.push_back(workload_desc("2-RemoteRead", 0, nullptr, nullptr, TxnRemoteRead));
-    }
-
-    if (ycsb_workload.rmw_percent()) {
-      LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
-      w.push_back(workload_desc("0-HotRMW", 0, nullptr, nullptr, TxnHotRMW));
-      w.push_back(workload_desc("1-ColdRMW", 1, nullptr, nullptr, TxnRMW));
     }
 
     return w;
   }
 
   static ermia::coro::task<rc_t> TxnRead(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
-    return static_cast<ycsb_cs_hybrid_worker *>(w)->txn_read(txn, idx);
+    return static_cast<ycsb_cs_flat_worker *>(w)->txn_read(txn, idx);
   }
 
   static ermia::coro::task<rc_t> TxnHotRead(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
-    return static_cast<ycsb_cs_hybrid_worker *>(w)->txn_hot_read(txn, idx);
-  }
-
-  static ermia::coro::task<rc_t> TxnRemoteRead(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
-    return static_cast<ycsb_cs_hybrid_worker *>(w)->txn_remote_read(txn, idx);
-  }
-
-  static ermia::coro::task<rc_t> TxnRMW(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
-    return static_cast<ycsb_cs_hybrid_worker *>(w)->txn_rmw(txn, idx);
-  }
-
-  static ermia::coro::task<rc_t> TxnHotRMW(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
-    return static_cast<ycsb_cs_hybrid_worker *>(w)->txn_hot_rmw(txn, idx);
-  }
-
-  static ermia::coro::task<rc_t> TxnInsert(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
-    return static_cast<ycsb_cs_hybrid_worker *>(w)->txn_insert(txn, idx);
-  }
-
-  static ermia::coro::task<rc_t> TxnHotUpdate(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
-    return static_cast<ycsb_cs_hybrid_worker *>(w)->txn_hot_update(txn, idx);
-  }
-
-  static ermia::coro::task<rc_t> TxnColdUpdate(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
-    return static_cast<ycsb_cs_hybrid_worker *>(w)->txn_cold_update(txn, idx);
+    return static_cast<ycsb_cs_flat_worker *>(w)->txn_hot_read(txn, idx);
   }
 
   /**
@@ -191,10 +114,10 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
       if (!ermia::config::index_probe_only) {
         if (j < FLAGS_ycsb_cold_ops_per_tx) {
           ermia::varstr &k = GenerateKey(txn, false);
-          rc = co_await table_index->task_GetRecord(txn, k, v);
+          rc = co_await table_index->flat_GetRecord(txn, k, v);
         } else {
           ermia::varstr &k = GenerateKey(txn, true);
-          rc = co_await table_index->task_GetRecord(txn, k, v);  // Read
+          rc = co_await table_index->flat_GetRecord(txn, k, v);  // Read
         }
       } else {
         // auto &k = GenerateKey(txn, true);
@@ -246,7 +169,7 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
       rc_t rc = rc_t{RC_INVALID};
       if (!ermia::config::index_probe_only) {
         auto &k = GenerateKey(txn, true);
-        rc = co_await table_index->task_GetRecord(txn, k, v);  // Read
+        rc = co_await table_index->flat_GetRecord(txn, k, v);  // Read
       } else {
         //ermia::varstr &k = GenerateKey(txn, true);
         ermia::varstr &k = str(arenas[idx], sizeof(ycsb_kv::value));
@@ -281,254 +204,9 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
   }
 
   /**
-   * Read transaction with hot transactions going with 2-level coroutine
-   * and cold transactions going with fully-nested coroutine.
-   */
-  ermia::coro::task<rc_t> txn_remote_read(ermia::transaction *txn, uint32_t idx) {
-    for (int j = 0; j < FLAGS_ycsb_ops_per_tx; ++j) {
-      // ermia::varstr &v = str(sizeof(ycsb_kv::value));
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-
-      // TODO(tzwang): add read/write_all_fields knobs
-      rc_t rc = rc_t{RC_INVALID};
-      if (!ermia::config::index_probe_only) {
-        auto &k = GenerateKey(txn, true);
-        uint64_t timer_start = txn->rdtsc();
-        while (txn->rdtsc() - timer_start / (3.1 * 1e3) < 5) {
-          co_await suspend_always{};
-        }
-        rc = co_await table_index->task_GetRecord(txn, k, v);  // Read
-      } else {
-        ermia::varstr &k = str(arenas[idx], sizeof(ycsb_kv::value));
-        new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
-        BuildKey(rng_gen_key(true), k);
-
-        ermia::OID oid = 0;
-        ermia::ConcurrentMasstree::versioned_node_t sinfo;
-        ermia::ConcurrentMasstree::threadinfo ti(0);
-        rc = (co_await table_index->GetMasstree().search_task(k, oid, ti, &sinfo)) ? RC_TRUE : RC_FALSE;
-      }
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
-#else
-      // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(ermia::config::index_probe_only || *(char *)v.data() == 'a');
-#endif
-
-      if (!ermia::config::index_probe_only) {
-        memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
-        ALWAYS_ASSERT(*(char *)v.data() == 'a');
-      }
-    }
-
-    if (!ermia::config::index_probe_only) {
-      TryCatchCoro(db->Commit(txn));
-    }
-
-    co_return {RC_TRUE};
-  }
-
-  // Read-modify-write transaction with context-switch using simple coroutine
-  ermia::coro::task<rc_t> txn_rmw(ermia::transaction *txn, uint32_t idx) {
-    for (int i = 0; i < FLAGS_ycsb_ops_per_tx; ++i) {
-      ermia::varstr &k = GenerateKey(txn, true);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      rc_t rc = rc_t{RC_INVALID};
-
-      rc = co_await table_index->task_GetRecord(txn, k, v);
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
-#else
-      // Under SI this must succeed
-      LOG_IF(FATAL, rc._val != RC_TRUE);
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(*(char*)v.data() == 'a');
-#endif
-
-      ASSERT(v.size() == sizeof(ycsb_kv::value));
-      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
-
-      // Re-initialize the value structure to use my own allocated memory -
-      // DoTupleRead will change v.p to the object's data area to avoid memory
-      // copy (in the read op we just did).
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
-      new (v.data()) ycsb_kv::value("a");
-      rc = co_await table_index->task_UpdateRecord(txn, k, v);  // Modify-write
-
-      TryCatchCoro(rc);
-    }
-
-    for (int i = 0; i < FLAGS_ycsb_rmw_additional_reads; ++i) {
-      bool hot;
-      if (i < FLAGS_ycsb_cold_ops_per_tx) {
-        hot = false;
-      } else {
-        hot = true;
-      }
-      ermia::varstr &k = GenerateKey(txn, hot);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      rc_t rc = rc_t{RC_INVALID};
-
-      rc = co_await table_index->task_GetRecord(txn, k, v);
-
-      if (txn->is_forced_abort()) {
-        db->Abort(txn);
-        co_return {RC_ABORT_USER};
-      }
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
-#else
-      // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(*(char*)v.data() == 'a');
-#endif
-
-      ASSERT(v.size() == sizeof(ycsb_kv::value));
-      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
-    }
-#ifndef CORO_BATCH_COMMIT
-    TryCatchCoro(db->Commit(txn));
-#endif
-    co_return {RC_TRUE};
-  }
-
-  ermia::coro::task<rc_t> txn_hot_rmw(ermia::transaction *txn, uint32_t idx) {
-    for (int i = 0; i < FLAGS_ycsb_ops_per_tx; ++i) {
-      ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      rc_t rc = rc_t{RC_INVALID};
-
-      rc = co_await table_index->task_GetRecord(txn, k, v);
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
-#else
-      // Under SI this must succeed
-      LOG_IF(FATAL, rc._val != RC_TRUE);
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(*(char*)v.data() == 'a');
-#endif
-      ASSERT(v.size() == sizeof(ycsb_kv::value));
-      // Re-initialize the value structure to use my own allocated memory -
-      // DoTupleRead will change v.p to the object's data area to avoid memory
-      // copy (in the read op we just did).
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
-      new (v.data()) ycsb_kv::value("a");
-      rc = co_await table_index->task_UpdateRecord(txn, k, v);  // Modify-write
-      TryCatchCoro(rc);
-    }
-
-    for (int i = 0; i < FLAGS_ycsb_rmw_additional_reads; ++i) {
-      ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      rc_t rc = rc_t{RC_INVALID};
-
-      rc = co_await table_index->task_GetRecord(txn, k, v);
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
-#else
-      // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(*(char*)v.data() == 'a');
-#endif
-
-      ASSERT(v.size() == sizeof(ycsb_kv::value));
-      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
-    }
-#ifndef CORO_BATCH_COMMIT
-    TryCatchCoro(db->Commit(txn));
-#endif
-    co_return {RC_TRUE};
-  }
-
-  ermia::coro::task<rc_t> txn_insert(ermia::transaction *txn, uint32_t idx) {
-    for (uint64_t i = 0; i < FLAGS_ycsb_ins_per_tx; ++i) {
-      auto &k = GenerateNewKey(txn);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      *(char *)v.p = 'a';
-
-      rc_t rc = rc_t{RC_INVALID};
-      rc = co_await table_index->task_InsertRecord(txn, k, v);
-    }
-
-    TryCatchCoro(db->Commit(txn));
-
-    co_return {RC_TRUE};
-  }
-
-  ermia::coro::task<rc_t> txn_cold_update(ermia::transaction *txn, uint32_t idx) {
-    for (int i = 0; i < FLAGS_ycsb_update_per_tx; ++i) {
-      if (i < FLAGS_ycsb_cold_ops_per_tx) {
-        ermia::varstr &k = GenerateKey(txn, false);
-        ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-        rc_t rc = rc_t{RC_INVALID};
-
-        rc = co_await table_index->task_GetRecord(txn, k, v);
-
-        if (txn->is_forced_abort()) {
-          db->Abort(txn);
-          co_return {RC_ABORT_USER};
-        }
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-        TryCatchCoro(rc);
-#else
-        // Under SI this must succeed
-        ALWAYS_ASSERT(rc._val == RC_TRUE);
-        ASSERT(*(char*)v.data() == 'a');
-#endif
-        ASSERT(v.size() == sizeof(ycsb_kv::value));
-
-        k = GenerateKey(txn);
-        // Re-initialize the value structure to use my own allocated memory -
-        // DoTupleRead will change v.p to the object's data area to avoid memory
-        // copy (in the read op we just did).
-        new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
-        new (v.data()) ycsb_kv::value("a");
-        rc = co_await table_index->task_UpdateRecord(txn, k, v);  // Modify-write
-        TryCatchCoro(rc);
-      } else {
-        ermia::varstr &k = GenerateKey(txn);
-        ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-        new (v.data()) ycsb_kv::value("a");
-        auto rc = co_await table_index->task_UpdateRecord(txn, k, v);  // Modify-write
-        TryCatchCoro(rc);
-      }
-    }
-
-#ifndef CORO_BATCH_COMMIT
-    TryCatchCoro(db->Commit(txn));
-#endif
-    co_return {RC_TRUE};
-  }
-
-  ermia::coro::task<rc_t> txn_hot_update(ermia::transaction *txn, uint32_t idx) {
-    for (int i = 0; i < FLAGS_ycsb_update_per_tx; ++i) {
-      ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      new (v.data()) ycsb_kv::value("a");
-      auto rc = co_await table_index->task_UpdateRecord(txn, k, v);  // Modify-write
-      TryCatchCoro(rc);
-    }
-
-#ifndef CORO_BATCH_COMMIT
-    TryCatchCoro(db->Commit(txn));
-#endif
-    co_return {RC_TRUE};
-  }
-
- private:
-  uint32_t _coro_batch_size;
-
-  /**
    * This scheduler processes transactions in a batch fashion.
    */
-  void HybridBatch() {
+  void FlatBatch() {
     const size_t batch_size = _coro_batch_size;
     std::vector<std::tuple<ermia::coro::task<rc_t>, ermia::transaction *>> task_queue(batch_size);
     std::vector<uint32_t> task_workload_idxs(batch_size);
@@ -604,7 +282,7 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
   /**
    * This pipeline scheduler has one queue.
    */
-  void HybridPipeline() {
+  void FlatPipeline() {
 #ifdef GROUP_SAME_TRX
     LOG(FATAL) << "Pipeline scheduler doesn't work with batching same-type transactions";
 #endif
@@ -712,7 +390,7 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
    * because the next operation still starts from probing the index, after which we will see if this operation eventually is hot or cold.
    * When the cold queue is full, the system will abort new cold transactions.
    */
-  void HybridMosaicDB() {
+  void FlatMosaicDB() {
 #ifdef GROUP_SAME_TRX
     LOG(FATAL) << "Pipeline scheduler doesn't work with batching same-type transactions";
 #endif
@@ -939,17 +617,20 @@ coldq:
     }
     ermia::MM::epoch_exit(0, begin_epoch);
   }
+ 
+ private:
+  uint32_t _coro_batch_size;
 };
 
-void ycsb_cs_hybrid_do_test(ermia::Engine *db) {
+void ycsb_cs_flat_do_test(ermia::Engine *db) {
   ycsb_parse_options();
-  ycsb_bench_runner<ycsb_cs_hybrid_worker> r(db);
+  ycsb_bench_runner<ycsb_cs_flat_worker> r(db);
   r.run();
 }
 
 int main(int argc, char **argv) {
-  bench_main(argc, argv, ycsb_cs_hybrid_do_test);
+  bench_main(argc, argv, ycsb_cs_flat_do_test);
   return 0;
 }
 
-#endif  // HYBRID_COROUTINE
+#endif  // FLAT_COROUTINE

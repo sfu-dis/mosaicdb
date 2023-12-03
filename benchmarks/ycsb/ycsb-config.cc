@@ -210,6 +210,8 @@ void ycsb_parse_options() {
     ermia::config::coro_tx = true;
   } else if (FLAGS_ycsb_read_tx_type == "hybrid-coro") {
     g_read_txn_type = ReadTransactionType::HybridCoro;
+  } else if (FLAGS_ycsb_read_tx_type == "flat-coro") {
+    g_read_txn_type = ReadTransactionType::FlatCoro;
   } else if (FLAGS_ycsb_read_tx_type == "multiget-simple-coro") {
     g_read_txn_type = ReadTransactionType::SimpleCoroMultiGet;
     ermia::config::coro_tx = true;

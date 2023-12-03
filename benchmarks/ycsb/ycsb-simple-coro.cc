@@ -77,15 +77,6 @@ public:
 
   // Read transaction with context-switch using simple coroutine
   ermia::coro::generator<rc_t> txn_read(uint32_t idx, ermia::epoch_num begin_epoch) {
-#ifdef LOCKONLY
-    ermia::myspinlock.lock();
-    volatile int x = 0;
-    for (volatile int i = 0; i < ermia::config::test_spinlock_cs; ++i) {
-      x += i;
-    }
-    ermia::myspinlock.unlock();
-    co_return {RC_TRUE};
-#endif
     ermia::transaction *txn = nullptr;
     if (ermia::config::index_probe_only) {
       arenas[idx].reset();

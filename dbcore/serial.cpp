@@ -173,7 +173,7 @@ static thread_local readers_list::tls_bitmap_info tls_bitmap_infos[config::MAX_C
 void assign_reader_bitmap_entry() {
   if (tls_bitmap_infos[0].entry) return;
 
-  for (auto tls_bitmap_info : tls_bitmap_infos) {
+  for (auto &tls_bitmap_info : tls_bitmap_infos) {
     for (uint32_t i = 0; i < readers_list::bitmap_t::ARRAY_SIZE; ++i) {
     retry:
       auto bits = volatile_read(rlist.bitmap.array[i]);
