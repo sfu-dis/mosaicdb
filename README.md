@@ -1,5 +1,15 @@
 ## The Art of Latency Hiding in Modern Database Engines (VLDB '24)
 
+MosaicDB is a research storage engine that systematically hides various types of latency in modern memory-optimized database systems.
+
+See details in our [VLDB 2024 paper](https://www.vldb.org/pvldb/vol17/p577-huang.pdf) below. If you use our work, please cite:
+
+```
+The Art of Latency Hiding in Modern Database Engines.
+Kaisong Huang, Tianzheng Wang, Qingqing Zhou and Qingzhong Meng.
+PVLDB 17(3) (VLDB 2024)
+```
+
 ### Environment configurations
 Step 1: Software dependencies
 * cmake
