@@ -389,7 +389,9 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
     std::cerr << "  interval of checking cold transactions measured by # of committed hot transactions: " << ermia::config::coro_check_cold_tx_interval << std::endl;
   }
 
-  system("rm -rf " + FLAGS_log_data_dir + "/*");
+  std::string myString = "rm -rf " + FLAGS_log_data_dir + "/*";
+  const char* charPtr = myString.c_str();
+  system(charPtr);
   ermia::MM::prepare_node_memory();
 
   // Must have everything in config ready by this point

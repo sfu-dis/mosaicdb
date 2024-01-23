@@ -73,6 +73,7 @@ set_property(GLOBAL APPEND PROPERTY ALL_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/engine.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/corobase.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/corobase-task.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/corobase-flat.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/tuple.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/txn.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/txn-ssn.cc
@@ -112,6 +113,10 @@ set_target_properties(corobase_nested_coro_si PROPERTIES COMPILE_FLAGS "-DNESTED
 # SI with hybrid coroutine
 add_library(corobase_hybrid_coro_si SHARED ${LIB_SRC})
 set_target_properties(corobase_hybrid_coro_si PROPERTIES COMPILE_FLAGS "")
+
+# SI with flat coroutine
+add_library(corobase_flat_coro_si SHARED ${LIB_SRC})
+set_target_properties(corobase_flat_coro_si PROPERTIES COMPILE_FLAGS "")
 
 # Thread pool library with SSN enabled
 #add_library(thread_pool_ssn SHARED ${THREAD_POOL_SRC})

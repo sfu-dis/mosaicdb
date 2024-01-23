@@ -186,6 +186,7 @@ public:
   ermia::coro::generator<rc_t> coro_Scan(transaction *t, const varstr &start_key, const varstr *end_key,
                               ScanCallback &callback, uint32_t max_keys = ~uint32_t{0});
 
+  ermia::coro::task<rc_t> flat_GetRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
   ermia::coro::task<rc_t> task_GetRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
   ermia::coro::task<rc_t> task_UpdateRecord(transaction *t, const varstr &key, varstr &value);
   ermia::coro::task<rc_t> task_InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
