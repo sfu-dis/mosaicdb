@@ -33,6 +33,9 @@ const int g_scan_min_length = 1;
 int g_scan_length_zipfain_rng = 0;
 double g_scan_length_zipfain_theta = 0.99;
 
+// table size
+std::atomic<uint64_t> instered_hot_table_size {0};
+
 // A spin barrier for all loaders to finish
 std::atomic<uint32_t> loaders_barrier(0);
 std::atomic<bool> all_flushed(false);
@@ -78,16 +81,27 @@ void ycsb_table_loader::load() {
 
 void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name, uint64_t hot_record_count, uint64_t cold_record_count) {
   uint32_t nloaders = std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
-  int64_t hot_to_insert = hot_record_count / nloaders;
+  uint64_t record_per_thread = std::max(1ul, hot_record_count / nloaders);
+
+  uint64_t hot_start_idx = instered_hot_table_size.fetch_add(record_per_thread);
+  int64_t hot_to_insert;
+  if(hot_start_idx >= hot_record_count){
+    hot_to_insert = 0;
+  } else {
+    hot_to_insert = std::min(record_per_thread, hot_record_count - hot_start_idx);
+  }
   int64_t cold_to_insert = cold_record_count / nloaders;
-  uint64_t hot_start_key = loader_id * hot_to_insert;
+  uint64_t hot_start_key = hot_start_idx;
   uint64_t cold_start_key = hot_record_count + loader_id * cold_to_insert;
   int64_t to_insert = hot_to_insert + cold_to_insert;
 
   uint64_t kBatchSize = 256;
 
-  // Load hot records.
-  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+  
+  ermia::transaction *txn;
+  if(hot_to_insert){
+    txn = db->NewTransaction(0, *arena, txn_buf()); 
+  }
   for (uint64_t i = 0; i < hot_to_insert; ++i) {
     ermia::varstr &k = str(sizeof(ycsb_kv::key));
     BuildKey(hot_start_key + i, k);
@@ -147,7 +161,9 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
   while (loaders_barrier);
 
   // Verify inserted values
-  txn = db->NewTransaction(0, *arena, txn_buf());
+  if(hot_to_insert){
+    txn = db->NewTransaction(0, *arena, txn_buf());
+  }
   for (uint64_t i = 0; i < hot_to_insert; ++i) {
     rc_t rc = rc_t{RC_INVALID};
     ermia::varstr &k = str(sizeof(ycsb_kv::key));
@@ -220,7 +236,7 @@ void ycsb_parse_options() {
   } else if (FLAGS_ycsb_read_tx_type == "multiget-amac") {
     g_read_txn_type = ReadTransactionType::AMACMultiGet;
   } else {
-    LOG(FATAL) << "Wrong read transaction type " << std::string(optarg);
+    LOG(FATAL) << "Wrong read transaction type " << FLAGS_ycsb_read_tx_type;
   }
 
   if (FLAGS_ycsb_workload == "A") {

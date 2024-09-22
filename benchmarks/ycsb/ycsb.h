@@ -122,7 +122,7 @@ class ycsb_bench_runner : public bench_runner {
 	    std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
 
     uint64_t records_per_thread = std::max<uint64_t>(1, FLAGS_ycsb_hot_table_size / nloaders);
-    FLAGS_ycsb_hot_table_size = records_per_thread * nloaders;
+    // FLAGS_ycsb_hot_table_size = records_per_thread * nloaders;
     std::cerr << "[INFO] requested for " << requested << " hot table records, will load "
          << FLAGS_ycsb_hot_table_size << std::endl;
 
