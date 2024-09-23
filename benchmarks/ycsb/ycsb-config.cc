@@ -81,7 +81,7 @@ void ycsb_table_loader::load() {
 
 void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name, uint64_t hot_record_count, uint64_t cold_record_count) {
   uint32_t nloaders = std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
-  uint64_t record_per_thread = std::max(1ul, hot_record_count / nloaders);
+  uint64_t record_per_thread = ((hot_record_count+nloaders-1) / nloaders);
 
   uint64_t hot_start_idx = instered_hot_table_size.fetch_add(record_per_thread);
   int64_t hot_to_insert;
